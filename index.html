@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BobbleJS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="cabinet">
+      <div class="screen">
+        <canvas id="game" width="320" height="240" aria-label="Tablero de BobbleJS"></canvas>
+
+        <section id="menu" class="overlay">
+          <h1 class="logo"><span>Bobble</span><span class="js">JS</span></h1>
+          <p class="tagline">Un homenaje a Puzzle Bobble</p>
+          <div class="menu-options">
+            <button type="button" data-mode="arcade">Arcade <small>Récord <span id="hi-arcade">0</span></small></button>
+            <button type="button" data-mode="endless">Infinito <small>Récord <span id="hi-endless">0</span></small></button>
+          </div>
+          <p class="hint">↑ ↓ elegir · Enter jugar</p>
+          <ul class="rules">
+            <li>Junta 3 o más burbujas del mismo color</li>
+            <li>Rebota en las paredes para ángulos difíciles</li>
+            <li>Las burbujas sueltas caen y dan más puntos</li>
+            <li>El techo baja cada pocos tiros: ¡no cruces la línea!</li>
+          </ul>
+        </section>
+
+        <section id="pause" class="overlay" hidden>
+          <h2>Pausa</h2>
+          <button type="button" id="resume">Continuar</button>
+          <button type="button" data-action="menu">Menú</button>
+          <p class="hint">P / Esc para continuar</p>
+        </section>
+
+        <section id="gameover" class="overlay" hidden>
+          <h2 class="lost">Game Over</h2>
+          <p class="final-round"></p>
+          <p>Puntos: <strong class="final-score">0</strong></p>
+          <p class="record" hidden>¡Nuevo récord!</p>
+          <button type="button" data-action="menu">Menú</button>
+          <p class="hint">Enter para continuar</p>
+        </section>
+
+        <section id="victory" class="overlay" hidden>
+          <h2 class="won">¡Completado!</h2>
+          <p class="final-round"></p>
+          <p>Puntos: <strong class="final-score">0</strong></p>
+          <p class="record" hidden>¡Nuevo récord!</p>
+          <button type="button" data-action="menu">Menú</button>
+          <p class="hint">Enter para continuar</p>
+        </section>
+      </div>
+      <p class="controls">← → apuntar · Espacio / ↑ disparar · P pausa · M sonido</p>
+    </main>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
