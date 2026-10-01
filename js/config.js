@@ -59,3 +59,12 @@ export const FALLBACK_RGB = {
   silver: '#a8a8d0',
   dead: '#303030',
 };
+
+// Móvil (SPEC 03): vista vertical 9:16. La geometría lógica del tablero no cambia;
+// el renderer lo dibuja trasladado bajo una franja de HUD.
+export const MOBILE_VIEW_W = 180;
+export const MOBILE_VIEW_H = 320;
+export const MOBILE_HUD_H = 80; // franja superior
+export const MOBILE_BOARD_DX = -70; // FIELD_X (96) → 26: tablero + paredes ocupan x 18..162
+export const MOBILE_BOARD_DY = 80; // el tablero empieza bajo la franja de HUD
+export const MINI_RIVAL_SCALE = 1 / 3; // tablero rival ≈ 43×80 px en la franja

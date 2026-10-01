@@ -1,4 +1,4 @@
-// Lógica de salas en memoria, sin sockets (SPEC 01).
+// Lógica de salas en memoria, sin sockets (SPEC 01; revancha en SPEC 02).
 // Cada operación devuelve { token?, error?, out } donde `out` es la lista de
 // mensajes a emitir: [{ to: <token del jugador>, msg }]. server/index.js solo
 // traduce tokens a sockets.
@@ -54,7 +54,7 @@ export class Rooms {
   createRoom(nick, now) {
     if (this.rooms.size >= this.maxRooms) return { error: 'server_full', out: [] };
     const code = this.newCode();
-    const room = { code, seed: null, createdAt: now, emptySince: null, players: [] };
+    const room = { code, seed: null, rematch: [false, false], createdAt: now, emptySince: null, players: [] };
     this.rooms.set(code, room);
     const token = this.addPlayer(room, nick);
     return { token, out: [this.welcome(room, token), ...this.roomUpdate(room)] };
@@ -68,10 +68,22 @@ export class Rooms {
     room.emptySince = null;
     const out = [this.welcome(room, token), ...this.roomUpdate(room)];
     if (room.players.length === PLAYERS_PER_ROOM) {
-      room.seed = this.random.int(UINT32);
+      room.seed = this.newSeed(null);
       out.push(...this.broadcast(room, message('start', { seed: room.seed })));
     }
     return { token, out };
+  }
+
+  // Voto de revancha: cuando los dos votan, nueva semilla para ambos
+  rematch(token) {
+    const found = this.find(token);
+    if (!found || found.room.seed === null) return { out: [] };
+    const { room, you } = found;
+    room.rematch[you] = true;
+    if (!room.rematch.every(Boolean)) return { out: [] };
+    room.rematch = [false, false];
+    room.seed = this.newSeed(room.seed);
+    return { out: this.broadcast(room, message('start', { seed: room.seed })) };
   }
 
   // Salir voluntariamente cierra la sala: el rival vuelve al lobby
@@ -146,6 +158,14 @@ export class Rooms {
       for (let i = 0; i < ROOM_CODE_LENGTH; i++) code += ROOM_CODE_ALPHABET[this.random.int(ROOM_CODE_ALPHABET.length)];
     } while (this.rooms.has(code));
     return code;
+  }
+
+  // Semilla uint32 distinta de la anterior (una revancha nunca repite tablero)
+  newSeed(previous) {
+    let seed;
+    do seed = this.random.int(UINT32);
+    while (seed === previous);
+    return seed;
   }
 
   addPlayer(room, nick) {

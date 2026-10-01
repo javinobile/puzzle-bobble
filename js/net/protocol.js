@@ -1,7 +1,7 @@
-// Protocolo de red compartido por el navegador y el servidor (SPEC 01).
+// Protocolo de red compartido por el navegador y el servidor (SPEC 01, v2 en SPEC 02).
 // Todos los mensajes son JSON { v, t, ...campos }.
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const MAX_MESSAGE_BYTES = 4096;
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // sin I ni O
 export const ROOM_CODE_LENGTH = 4;
@@ -36,6 +36,7 @@ const CLIENT_SCHEMA = {
   leave: () => true,
   ping: (m) => Number.isFinite(m.ts),
   relay: (m) => 'data' in m,
+  rematch: () => true,
 };
 
 export function validateClientMessage(msg) {
@@ -43,6 +44,43 @@ export function validateClientMessage(msg) {
   if (msg.v !== PROTOCOL_VERSION) return false;
   const check = Object.hasOwn(CLIENT_SCHEMA, msg.t) ? CLIENT_SCHEMA[msg.t] : null;
   return Boolean(check?.(msg));
+}
+
+// ---------- Contenido de relay (SPEC 02) ----------
+// El servidor reenvía `data` sin mirarlo; lo valida el cliente que lo recibe.
+//   { k: 'snap', rows: ['RRYY..BG', …], shift, drops, current, next }  tras asentar cada tiro
+//   { k: 'aim', a }        ángulo del lanzador en grados
+//   { k: 'garbage', n }    burbujas de basura enviadas al rival
+//   { k: 'lost' }          mi burbuja cruzó la línea
+//   { k: 'quit' }          abandono
+
+export const MAX_GARBAGE = 20;
+const SNAP_ROW_RE = /^[BRPKYGOW.]{0,8}$/;
+const COLOR_LETTER_RE = /^[BRPKYGOW]$/;
+const MAX_SNAP_ROWS = 20;
+
+const isColorLetter = (value) => value === null || (typeof value === 'string' && COLOR_LETTER_RE.test(value));
+const isSmallInt = (value, max) => Number.isInteger(value) && value >= 0 && value <= max;
+
+const RELAY_SCHEMA = {
+  snap: (d) =>
+    Array.isArray(d.rows) &&
+    d.rows.length <= MAX_SNAP_ROWS &&
+    d.rows.every((row) => typeof row === 'string' && SNAP_ROW_RE.test(row)) &&
+    (d.shift === 0 || d.shift === 1) &&
+    isSmallInt(d.drops, MAX_SNAP_ROWS) &&
+    isColorLetter(d.current) &&
+    isColorLetter(d.next),
+  aim: (d) => Number.isFinite(d.a) && Math.abs(d.a) <= 90,
+  garbage: (d) => Number.isInteger(d.n) && d.n >= 1 && d.n <= MAX_GARBAGE,
+  lost: () => true,
+  quit: () => true,
+};
+
+export function validateRelay(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const check = Object.hasOwn(RELAY_SCHEMA, data.k) ? RELAY_SCHEMA[data.k] : null;
+  return Boolean(check?.(data));
 }
 
 // Construye un mensaje con la versión actual

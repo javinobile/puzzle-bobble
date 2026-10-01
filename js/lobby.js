@@ -1,11 +1,25 @@
-// Lobby del versus online (SPEC 01): apodo, crear/unirse, sala de espera y "Partida lista".
-// El Game sigue en estado 'menu' mientras el lobby está abierto.
+// Lobby del versus online (SPEC 01): apodo, crear/unirse y sala de espera.
+// SPEC 02: al llegar `start` arranca la partida versus en el Game (vista 'match')
+// y al terminar muestra Victoria/Derrota/Empate con revancha.
 
 import { NetClient } from './net/client.js';
 import { NICK_RE, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH } from './net/protocol.js';
 
 const NICK_KEY = 'bobblejs.nickname';
-const VIEWS = ['online', 'room', 'match-ready'];
+const VIEWS = ['online', 'room', 'versus-end'];
+const MATCH = 'match'; // partida en curso: ningún overlay del lobby visible
+
+const RESULT_TITLE = { win: '¡Victoria!', lose: 'Derrota', draw: 'Empate' };
+const RESULT_CLASS = { win: 'won', lose: 'lost', draw: 'draw' };
+const RESULT_REASON = {
+  'win:line': 'Tu rival cruzó la línea',
+  'win:quit': 'Ganaste: el rival abandonó',
+  'win:timeout': 'Ganaste: tu rival no volvió a conectarse',
+  'win:left': 'Ganaste: tu rival se fue de la sala',
+  'lose:line': 'Cruzaste la línea',
+  'lose:quit': 'Abandonaste la partida',
+  'draw:line': 'Los dos cruzaron la línea a la vez',
+};
 
 const ERROR_TEXT = {
   bad_version: 'Versión distinta a la del servidor: recarga la página',
@@ -43,9 +57,10 @@ const cleanCode = (value) => value.toUpperCase().replace(/[^A-Z]/g, '').slice(0,
 const isPossibleCode = (code) => [...code].every((ch) => ROOM_CODE_ALPHABET.includes(ch));
 
 export class Lobby {
-  constructor({ menu, sound, onExit }) {
+  constructor({ menu, sound, game, onExit }) {
     this.menu = menu;
     this.sound = sound;
+    this.game = game;
     this.onExit = onExit;
     this.net = new NetClient();
     this.view = null; // null = lobby cerrado
@@ -55,6 +70,7 @@ export class Lobby {
     this.seed = null;
     this.peerDeadline = null;
     this.countdownTimer = null;
+    this.roomClosed = false; // el rival se fue: ya no hay revancha posible
 
     this.el = Object.fromEntries(VIEWS.map((v) => [v, $(`#${v}`)]));
     this.nickInput = $('#nick');
@@ -64,12 +80,18 @@ export class Lobby {
     this.bindDom();
     this.bindNet();
 
-    // Recarga con sesión activa: volver directamente a la sala
+    // Recarga con sesión activa: volver directamente a la sala.
+    // Si había una partida en curso se perdió con la recarga y cuenta como abandono.
+    this.reloaded = this.net.hasSession;
     if (this.net.hasSession) this.open();
   }
 
   get active() {
     return this.view !== null;
+  }
+
+  get inMatch() {
+    return this.game.mode === 'versus' && this.game.versus !== null;
   }
 
   // ---------- Vistas ----------
@@ -82,11 +104,11 @@ export class Lobby {
   }
 
   message(text) {
-    if (this.view) $('.net-msg', this.el[this.view]).textContent = text;
+    if (this.el[this.view]) $('.net-msg', this.el[this.view]).textContent = text;
   }
 
   renderPlayers() {
-    for (const view of ['room', 'match-ready']) {
+    for (const view of ['room', 'versus-end']) {
       const list = $('.players', this.el[view]);
       list.replaceChildren(
         ...this.players.map((p, i) => {
@@ -116,6 +138,7 @@ export class Lobby {
   exit() {
     if (!this.active) return;
     this.net.close();
+    this.leaveMatch();
     this.resetRoom();
     this.show(null);
     this.sound.select();
@@ -126,6 +149,7 @@ export class Lobby {
   back() {
     if (this.view === 'online') return this.exit();
     this.net.leave();
+    this.leaveMatch();
     this.resetRoom();
     this.show('online');
     this.sound.select();
@@ -137,13 +161,69 @@ export class Lobby {
     this.code = null;
     this.players = [];
     this.seed = null;
+    this.roomClosed = false;
   }
 
   // Vuelve a crear/unirse mostrando por qué
   dropToOnline(text) {
+    this.leaveMatch();
     this.resetRoom();
     this.show('online');
     this.message(text);
+  }
+
+  // ---------- Partida versus (SPEC 02) ----------
+
+  startMatch(seed) {
+    const game = this.game;
+    game.startVersus({
+      seed,
+      you: this.you,
+      nicks: this.players.map((p) => p.nick),
+      send: (data) => this.net.send('relay', { data }),
+    });
+    this.roomClosed = false;
+    this.show(MATCH);
+    // Recargar la pestaña en plena partida pierde el estado: cuenta como abandono
+    if (this.reloaded) game.quitVersus();
+    this.reloaded = false;
+  }
+
+  // El Game deja el modo versus y vuelve al menú (antes de mostrar una vista del lobby)
+  leaveMatch() {
+    if (!this.inMatch) return;
+    this.game.versus = null;
+    this.game.mode = null;
+    this.game.setState('menu');
+  }
+
+  // Llamado por main.js en cada cambio de estado del Game
+  onGameState(state, info) {
+    if (!this.inMatch) return;
+    if (state === 'versus-end') this.showResult(info.result, info.reason);
+  }
+
+  showResult(result, reason) {
+    const view = this.el['versus-end'];
+    const title = $('.vs-title', view);
+    title.textContent = RESULT_TITLE[result];
+    title.className = `vs-title ${RESULT_CLASS[result]}`;
+    $('.vs-reason', view).textContent = RESULT_REASON[`${result}:${reason}`] ?? '';
+    const rematch = $('#rematch');
+    rematch.disabled = this.roomClosed;
+    rematch.hidden = this.roomClosed;
+    if (this.view !== 'versus-end') this.show('versus-end');
+    this.renderPlayers();
+    if (this.roomClosed) this.message('Tu rival ha salido de la sala');
+    else rematch.focus();
+  }
+
+  rematch() {
+    if (this.roomClosed || $('#rematch').disabled) return;
+    this.sound.select();
+    this.net.send('rematch');
+    $('#rematch').disabled = true;
+    this.message('Esperando al rival…');
   }
 
   // ---------- Rival desconectado ----------
@@ -218,6 +298,7 @@ export class Lobby {
 
   bindDom() {
     $('#create-room').addEventListener('click', () => this.create());
+    $('#rematch').addEventListener('click', () => this.rematch());
     $('#join-room').addEventListener('click', () => this.join());
     for (const btn of document.querySelectorAll('.lobby-exit')) btn.addEventListener('click', () => this.back());
 
@@ -230,7 +311,8 @@ export class Lobby {
       if (e.key === 'Enter') this.join();
     });
     window.addEventListener('keydown', (e) => {
-      if (!this.active) return;
+      // En partida el teclado es del Game (P/Esc abre "¿Abandonar?")
+      if (!this.active || this.view === MATCH) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         this.back();
@@ -246,28 +328,41 @@ export class Lobby {
       this.you = m.you;
       this.code = m.code;
       $('.room-code', this.el.room).textContent = m.code;
-      $('.room-code-inline', this.el['match-ready']).textContent = m.code;
       if (!this.active) this.show('online');
     });
     net.on('room', (m) => {
+      // Sala sin rival tras recargar: no había partida que abandonar
+      if (m.players.length < 2) this.reloaded = false;
       this.players = m.players;
       this.renderPlayers();
       if (this.seed === null && this.view !== 'room') this.show('room');
     });
     net.on('start', (m) => {
+      // Tras un microcorte el servidor repite `start` con la misma semilla: la partida sigue
+      if (this.inMatch && this.game.versus.seed === m.seed) return;
       this.seed = m.seed;
-      $('.seed', this.el['match-ready']).textContent = m.seed;
-      if (this.view !== 'match-ready') this.show('match-ready');
+      this.startMatch(m.seed);
     });
-    net.on('latency', (ms) => {
-      $('.ping', this.el['match-ready']).textContent = `${ms} ms`;
+    net.on('relay', (m) => {
+      if (this.inMatch) this.game.onRelay(m.data);
     });
-    net.on('peer-lost', (m) => this.startCountdown(m.graceMs));
+    net.on('peer-lost', (m) => {
+      if (this.inMatch) return this.game.freeze('peer', m.graceMs);
+      this.startCountdown(m.graceMs);
+    });
     net.on('peer-back', () => {
+      if (this.inMatch) return this.game.unfreeze('peer');
       this.stopCountdown();
       this.message('Rival reconectado');
     });
     net.on('peer-left', (m) => {
+      if (this.inMatch) {
+        // La sala ya no existe: se gana si la partida seguía, y no hay revancha
+        this.roomClosed = true;
+        if (this.game.versus.result) this.showResult(this.game.versus.result, this.game.versus.resultReason);
+        else this.game.peerGone(m.reason);
+        return;
+      }
       this.dropToOnline(m.reason === 'timeout' ? 'Tu rival no volvió a conectarse' : 'Tu rival ha salido de la sala');
     });
     net.on('error', (m) => {
@@ -279,9 +374,11 @@ export class Lobby {
       if (!this.active) return;
       switch (status) {
         case 'reconnecting':
+          if (this.inMatch) this.game.freeze('self');
           this.message('Conexión perdida, reconectando…');
           break;
         case 'online':
+          if (this.inMatch) this.game.unfreeze('self');
           if (!this.peerDeadline) this.message('');
           break;
         case 'offline':

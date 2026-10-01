@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { EMPTY_ROOM_TTL_MS, RECONNECT_GRACE_MS, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH } from '../../js/net/protocol.js';
+import { EMPTY_ROOM_TTL_MS, PROTOCOL_VERSION, RECONNECT_GRACE_MS, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH } from '../../js/net/protocol.js';
 import { Rooms } from '../rooms.js';
 
 // Aleatoriedad determinista: `ints` se consume en orden y luego vuelve a 0
@@ -88,7 +88,7 @@ test('salir cierra la sala y avisa al rival con peer-left', () => {
   const guest = rooms.joinRoom(host.out[0].msg.code, 'ANA', 0);
 
   const { out } = rooms.leave(guest.token);
-  assert.deepEqual(out, [{ to: host.token, msg: { v: 1, t: 'peer-left', reason: 'left' } }]);
+  assert.deepEqual(out, [{ to: host.token, msg: { v: PROTOCOL_VERSION, t: 'peer-left', reason: 'left' } }]);
   assert.equal(rooms.size, 0);
   assert.equal(rooms.find(host.token), null);
   assert.deepEqual(rooms.leave(host.token).out, []);
@@ -138,7 +138,7 @@ test('agotar la gracia envía peer-left timeout y cierra la sala', () => {
   rooms.disconnect(guest, 1000);
   assert.deepEqual(rooms.tick(1000 + RECONNECT_GRACE_MS - 1).out, []);
   const { out } = rooms.tick(1000 + RECONNECT_GRACE_MS);
-  assert.deepEqual(out, [{ to: host, msg: { v: 1, t: 'peer-left', reason: 'timeout' } }]);
+  assert.deepEqual(out, [{ to: host, msg: { v: PROTOCOL_VERSION, t: 'peer-left', reason: 'timeout' } }]);
   assert.equal(rooms.size, 0);
   assert.equal(rooms.resume(guest, 1000 + RECONNECT_GRACE_MS).error, 'bad_token');
 });
@@ -179,4 +179,53 @@ test('disconnect de un token desconocido o ya desconectado no emite nada', () =>
   assert.deepEqual(rooms.disconnect('nadie', 0).out, []);
   rooms.disconnect(guest, 0);
   assert.deepEqual(rooms.disconnect(guest, 1).out, []);
+});
+
+// ---------- Revancha (SPEC 02) ----------
+
+test('revancha con un solo voto no emite start', () => {
+  const { rooms, host } = fullRoom();
+  assert.deepEqual(rooms.rematch(host).out, []);
+  assert.deepEqual(rooms.rematch(host).out, []);
+});
+
+test('revancha con los dos votos emite start con semilla nueva y reinicia los votos', () => {
+  const { rooms, host, guest } = fullRoom();
+  const before = rooms.find(host).room.seed;
+  rooms.rematch(host);
+  const { out } = rooms.rematch(guest);
+  assert.deepEqual(typesFor(out, host), ['start']);
+  assert.deepEqual(typesFor(out, guest), ['start']);
+  assert.equal(out[0].msg.seed, out[1].msg.seed);
+  assert.notEqual(out[0].msg.seed, before);
+  assert.equal(rooms.find(host).room.seed, out[0].msg.seed);
+  assert.deepEqual(rooms.find(host).room.rematch, [false, false]);
+  // Una nueva revancha vuelve a necesitar los dos votos
+  assert.deepEqual(rooms.rematch(guest).out, []);
+});
+
+test('la semilla de la revancha nunca repite la anterior', () => {
+  // Código AAAA (4 ceros), semilla 5, y la revancha tira 5 otra vez antes de 9
+  const rooms = new Rooms({ random: fakeRandom([0, 0, 0, 0, 5, 5, 9]) });
+  const host = rooms.createRoom('JAV', 0);
+  const guest = rooms.joinRoom(host.out[0].msg.code, 'ANA', 0);
+  assert.equal(rooms.find(host.token).room.seed, 5);
+  rooms.rematch(host.token);
+  assert.equal(rooms.rematch(guest.token).out[0].msg.seed, 9);
+});
+
+test('revancha sin partida empezada o con token desconocido no hace nada', () => {
+  const rooms = new Rooms();
+  const host = rooms.createRoom('JAV', 0);
+  assert.deepEqual(rooms.rematch(host.token).out, []);
+  assert.deepEqual(rooms.rematch('nadie').out, []);
+});
+
+test('reanudar tras una revancha devuelve la semilla nueva', () => {
+  const { rooms, host, guest } = fullRoom();
+  rooms.rematch(host);
+  const seed = rooms.rematch(guest).out[0].msg.seed;
+  rooms.disconnect(guest, 1000);
+  const resumed = rooms.resume(guest, 2000);
+  assert.equal(resumed.out.find((o) => o.msg.t === 'start').msg.seed, seed);
 });
