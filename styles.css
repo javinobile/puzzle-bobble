@@ -283,6 +283,123 @@ h2.draw {
   cursor: default;
 }
 
+/* Controles táctiles (SPEC 03): nunca visibles en escritorio */
+#touch-controls {
+  display: none;
+}
+
+/* ---------- Móvil (SPEC 03): todo cuelga de body.mobile ---------- */
+body.mobile {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.mobile .cabinet {
+  padding: 0;
+  gap: 0;
+}
+
+/* Vertical 9:16 ocupando el alto visible (dvh sigue a la barra de direcciones de iOS) */
+body.mobile .screen {
+  width: min(100vw, calc(100vh * 9 / 16));
+  width: min(100vw, calc(100dvh * 9 / 16));
+  aspect-ratio: 9 / 16;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Sin pistas de teclado */
+body.mobile .hint:not(.waiting),
+body.mobile .controls {
+  display: none;
+}
+
+/* ⏸ y 🔊: semitransparentes en las esquinas superiores del tablero (bajo la franja de HUD, lejos del lanzador) */
+body.mobile #touch-controls:not([hidden]) {
+  display: block;
+}
+
+#touch-controls button {
+  position: absolute;
+  top: calc(25% + 4px); /* MOBILE_HUD_H / MOBILE_VIEW_H */
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  justify-content: center;
+  font-family: system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1;
+  background: rgba(16, 32, 112, 0.6);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+#touch-controls button:active {
+  opacity: 0.9;
+}
+
+#btn-pause {
+  left: calc(14.4% + 4px); /* borde izquierdo del campo: x 26 de 180 */
+}
+
+#btn-mute {
+  right: calc(14.4% + 4px);
+}
+
+/* Overlays en vertical: letra legible y botones aptos para el dedo */
+body.mobile .overlay {
+  padding: 16px;
+  gap: 12px;
+  font-size: clamp(10px, 3.4vw, 14px);
+}
+
+body.mobile .logo {
+  font-size: clamp(24px, 10vw, 44px);
+}
+
+body.mobile .overlay button {
+  min-height: 44px;
+}
+
+body.mobile .menu-options {
+  min-width: 88%;
+}
+
+body.mobile .rules {
+  font-size: 0.75em;
+  padding: 0 4px;
+}
+
+body.mobile h2 {
+  font-size: 1.6em;
+}
+
+/* 16 px evita que iOS haga zoom al enfocar los campos */
+body.mobile .lobby input {
+  font-size: 16px;
+  min-height: 44px;
+}
+
+body.mobile .join-row {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+body.mobile .players {
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px 20px;
+}
+
+body.mobile .room-code {
+  font-size: 2.2em;
+}
+
 @keyframes blink {
   50% {
     opacity: 0.35;

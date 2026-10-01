@@ -27,6 +27,19 @@ python3 -m http.server # http://localhost:8000
 | M | Sonido on/off |
 | Enter | Elegir en menús |
 
+### Jugar en el móvil
+
+En un teléfono (puntero táctil) el juego pasa solo a una vista vertical con controles táctiles; el escritorio no cambia.
+
+- **Arrastra** el dedo sobre el tablero: el lanzador apunta hacia el dedo.
+- **Suelta** para disparar. Si sueltas **por debajo del lanzador**, el tiro se cancela.
+- El disparo automático a los 6 s se mantiene.
+- **⏸** pausa (en versus abre "¿Abandonar?") y **🔊** activa o silencia el sonido.
+- En versus, el tablero del rival se ve en miniatura arriba a la derecha.
+- El teclado físico no controla el juego en móvil.
+
+Para probarlo en el escritorio, usa el modo dispositivo de las DevTools (Chrome: `Ctrl/Cmd + Shift + M`) con un teléfono y **recarga la página**: la detección se hace una sola vez al cargar.
+
 ## Modos
 
 - **Arcade**: 10 rondas diseñadas a mano. Bonus por limpiar rápido.
@@ -118,7 +131,7 @@ Las salas viven en memoria: reiniciar el proceso cierra las partidas en curso.
 ### Tests
 
 ```bash
-npm test   # salas, protocolo, RNG con semilla y reglas del versus (node --test)
+npm test   # salas, protocolo, RNG con semilla, reglas del versus, detección de móvil y táctil (node --test)
 ```
 
 ## Reglas
@@ -150,10 +163,12 @@ js/
   shooter.js   Lanzador, proyectil y rebotes
   levels.js    Niveles Arcade y generador aleatorio
   rng.js       Generador con semilla (mulberry32) para el versus
-  renderer.js  Dibujo del tablero y HUD (uno o dos tableros)
+  renderer.js  Dibujo del tablero y HUD (uno o dos tableros, vista vertical en móvil)
   sprites.js   Coordenadas de la hoja de sprites
   audio.js     Efectos sintetizados con Web Audio
   input.js     Teclado
+  touch.js     Entrada táctil (arrastrar y soltar) para móvil
+  device.js    Detección de móvil
   storage.js   Récords en localStorage
   config.js    Constantes
   net/

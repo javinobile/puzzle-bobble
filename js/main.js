@@ -1,13 +1,17 @@
 import { loadSpriteSheet } from './assets.js';
 import { Sound } from './audio.js';
+import { IS_MOBILE } from './device.js';
 import { Game } from './game.js';
 import { Input } from './input.js';
 import { Lobby } from './lobby.js';
 import { Renderer } from './renderer.js';
 import { Sprites } from './sprites.js';
 import { getHighScore } from './storage.js';
+import { TouchInput } from './touch.js';
 
 const STEP = 1 / 60;
+// Estados en los que se ven los botones táctiles ⏸ y 🔊
+const TOUCH_CONTROL_STATES = new Set(['countdown', 'playing', 'frozen']);
 
 const $ = (sel) => document.querySelector(sel);
 const overlays = {
@@ -17,6 +21,8 @@ const overlays = {
   victory: $('#victory'),
 };
 
+if (IS_MOBILE) document.body.classList.add('mobile');
+
 async function boot() {
   const [sheet] = await Promise.all([
     loadSpriteSheet('assets/sprites.png'),
@@ -24,12 +30,15 @@ async function boot() {
   ]);
 
   const sound = new Sound();
-  const input = new Input(() => sound.unlock());
+  // En móvil solo hay control táctil: el teclado físico no se escucha
+  const input = IS_MOBILE ? new TouchInput($('#game'), () => sound.unlock()) : new Input(() => sound.unlock());
   const renderer = new Renderer($('#game'), new Sprites(sheet));
   const menuButtons = [...document.querySelectorAll('#menu .menu-options button')];
   let menuIndex = 0;
   let lobby = null;
   const quitConfirm = $('#quit-confirm');
+  const touchControls = $('#touch-controls');
+  const muteButton = $('#btn-mute');
 
   const selectMenu = (i) => {
     menuIndex = (i + menuButtons.length) % menuButtons.length;
@@ -40,13 +49,17 @@ async function boot() {
     sound,
     input,
     onStateChange(state, info) {
-      if (state === 'mute') return;
+      if (state === 'mute') {
+        muteButton.textContent = info.muted ? '🔇' : '🔊';
+        return;
+      }
       // Versus: "¿Abandonar?" se abre sobre la partida sin cambiar de estado
       if (state === 'quit-confirm') {
         quitConfirm.hidden = !info.open;
         return;
       }
       quitConfirm.hidden = true;
+      touchControls.hidden = !TOUCH_CONTROL_STATES.has(state);
       for (const [name, el] of Object.entries(overlays)) el.hidden = name !== state;
       lobby?.onGameState(state, info);
       if (state === 'menu') {
@@ -89,6 +102,18 @@ async function boot() {
   $('#resume').addEventListener('click', () => game.setState('playing'));
   $('#quit-yes').addEventListener('click', () => game.quitVersus());
   $('#quit-no').addEventListener('click', () => game.setQuitConfirm(false));
+
+  if (IS_MOBILE) {
+    // ⏸ pausa en solitario y abre "¿Abandonar?" en versus (el juego decide por su estado)
+    $('#btn-pause').addEventListener('click', () => input.press('pause'));
+    $('#btn-mute').addEventListener('click', () => input.press('mute'));
+    // iOS solo deja sonar el audio tras un gesto del usuario
+    document.addEventListener('pointerdown', () => sound.unlock());
+    // Sin menú de pulsación larga ni scroll al arrastrar sobre el juego
+    const screen = $('.screen');
+    screen.addEventListener('contextmenu', (e) => e.preventDefault());
+    screen.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+  }
 
   // Navegación de menús con teclado (el juego solo procesa 'playing' y 'paused')
   const handleMenus = () => {

@@ -7,10 +7,17 @@ import {
   LAUNCHER_Y,
   LIMIT_Y,
   MAX_ANGLE,
+  MINI_RIVAL_SCALE,
+  MOBILE_BOARD_DX,
+  MOBILE_BOARD_DY,
+  MOBILE_HUD_H,
+  MOBILE_VIEW_H,
+  MOBILE_VIEW_W,
   ROW_H,
   VIEW_H,
   VIEW_W,
 } from './config.js';
+import { IS_MOBILE } from './device.js';
 
 const FONT = '"Press Start 2P", monospace';
 const WALL = 8;
@@ -19,30 +26,40 @@ const FIELD_RIGHT = FIELD_X + FIELD_W;
 // Propio en x = 16, rival en x = 176.
 const OWN_DX = 16 - FIELD_X;
 const RIVAL_DX = 176 - FIELD_X;
+// Móvil (SPEC 03): rival en miniatura a la derecha de la franja de HUD, sin la tapa del techo
+const MINI_TOP = FIELD_TOP - WALL;
+const MINI_W = (FIELD_W + WALL * 2) * MINI_RIVAL_SCALE;
+const MINI_X = MOBILE_VIEW_W - MINI_W - 4;
+const MINI_Y = MOBILE_HUD_H - (VIEW_H - MINI_TOP) * MINI_RIVAL_SCALE;
 
 export class Renderer {
   constructor(canvas, sprites) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.sprites = sprites;
-    canvas.width = VIEW_W;
-    canvas.height = VIEW_H;
+    this.mobile = IS_MOBILE;
+    canvas.width = this.mobile ? MOBILE_VIEW_W : VIEW_W;
+    canvas.height = this.mobile ? MOBILE_VIEW_H : VIEW_H;
     this.ctx.imageSmoothingEnabled = false;
-    this.background = this.buildBackground([0]);
-    this.versusBackground = this.buildBackground([OWN_DX, RIVAL_DX]);
+    if (this.mobile) {
+      this.background = this.buildBackground([MOBILE_BOARD_DX], MOBILE_VIEW_W, MOBILE_VIEW_H, MOBILE_BOARD_DY);
+    } else {
+      this.background = this.buildBackground([0]);
+      this.versusBackground = this.buildBackground([OWN_DX, RIVAL_DX]);
+    }
   }
 
   // Fondo estático pre-renderizado (patrón de rombos como el arcade), con una zona de juego por desplazamiento
-  buildBackground(offsets) {
+  buildBackground(offsets, width = VIEW_W, height = VIEW_H, dy = 0) {
     const bg = document.createElement('canvas');
-    bg.width = VIEW_W;
-    bg.height = VIEW_H;
+    bg.width = width;
+    bg.height = height;
     const ctx = bg.getContext('2d');
     ctx.fillStyle = '#1c3c8c';
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillRect(0, 0, width, height);
     ctx.fillStyle = '#2850a8';
-    for (let y = 0; y < VIEW_H; y += 16) {
-      for (let x = (y / 16) % 2 ? 8 : 0; x < VIEW_W; x += 16) {
+    for (let y = 0; y < height; y += 16) {
+      for (let x = (y / 16) % 2 ? 8 : 0; x < width; x += 16) {
         ctx.beginPath();
         ctx.moveTo(x + 8, y);
         ctx.lineTo(x + 16, y + 8);
@@ -51,31 +68,39 @@ export class Renderer {
         ctx.fill();
       }
     }
-    for (const dx of offsets) {
-      // Zona de juego
-      const g = ctx.createLinearGradient(0, FIELD_TOP, 0, VIEW_H);
-      g.addColorStop(0, '#0c1848');
-      g.addColorStop(1, '#183078');
-      ctx.fillStyle = g;
-      ctx.fillRect(FIELD_X + dx, 0, FIELD_W, VIEW_H);
-      // Paredes
-      for (const x of [FIELD_X - WALL + dx, FIELD_RIGHT + dx]) {
-        ctx.fillStyle = '#8890a8';
-        ctx.fillRect(x, FIELD_TOP - WALL, WALL, VIEW_H);
-        ctx.fillStyle = '#c8d0e8';
-        ctx.fillRect(x + 1, FIELD_TOP - WALL, 2, VIEW_H);
-        ctx.fillStyle = '#50586c';
-        ctx.fillRect(x + WALL - 2, FIELD_TOP - WALL, 2, VIEW_H);
-        ctx.fillStyle = '#e8b030';
-        for (let y = FIELD_TOP; y < VIEW_H; y += 24) ctx.fillRect(x + 2, y, 4, 4);
-      }
+    // Móvil: franja de HUD oscurecida
+    if (dy) {
+      ctx.fillStyle = 'rgba(8, 16, 56, 0.55)';
+      ctx.fillRect(0, 0, width, dy);
     }
+    ctx.translate(0, dy);
+    for (const dx of offsets) this.drawField(ctx, dx);
     return bg;
+  }
+
+  // Zona de juego y paredes de un tablero (coordenadas lógicas, desplazado dx)
+  drawField(ctx, dx) {
+    const g = ctx.createLinearGradient(0, FIELD_TOP, 0, VIEW_H);
+    g.addColorStop(0, '#0c1848');
+    g.addColorStop(1, '#183078');
+    ctx.fillStyle = g;
+    ctx.fillRect(FIELD_X + dx, 0, FIELD_W, VIEW_H);
+    for (const x of [FIELD_X - WALL + dx, FIELD_RIGHT + dx]) {
+      ctx.fillStyle = '#8890a8';
+      ctx.fillRect(x, FIELD_TOP - WALL, WALL, VIEW_H);
+      ctx.fillStyle = '#c8d0e8';
+      ctx.fillRect(x + 1, FIELD_TOP - WALL, 2, VIEW_H);
+      ctx.fillStyle = '#50586c';
+      ctx.fillRect(x + WALL - 2, FIELD_TOP - WALL, 2, VIEW_H);
+      ctx.fillStyle = '#e8b030';
+      for (let y = FIELD_TOP; y < VIEW_H; y += 24) ctx.fillRect(x + 2, y, 4, 4);
+    }
   }
 
   render(game) {
     const ctx = this.ctx;
     ctx.drawImage(this.background, 0, 0);
+    if (this.mobile) return this.renderMobile(game);
     if (game.state === 'menu') return this.drawAttract(game);
     if (game.mode === 'versus') return this.renderVersus(game);
 
@@ -147,6 +172,16 @@ export class Renderer {
     }
   }
 
+  // Tablero propio (solitario o versus), en coordenadas lógicas
+  drawOwnBoard(game) {
+    const shake = game.dropWarning && !game.projectile ? Math.round(Math.sin(game.time * 60)) : 0;
+    this.drawCeiling(game.top, shake);
+    this.drawLimitLine(game.grid.lowestRow() + game.drops, game.time);
+    this.drawBoard(game, shake);
+    this.drawEffects(game);
+    this.drawLauncher(game);
+  }
+
   drawHud(game) {
     const lx = 8;
     const rx = FIELD_RIGHT + WALL + 6;
@@ -180,12 +215,7 @@ export class Renderer {
     // Tablero propio (izquierda): el mismo dibujo que en solitario, desplazado
     ctx.save();
     ctx.translate(OWN_DX, 0);
-    const shake = game.dropWarning && !game.projectile ? Math.round(Math.sin(game.time * 60)) : 0;
-    this.drawCeiling(game.top, shake);
-    this.drawLimitLine(game.grid.lowestRow() + game.drops, game.time);
-    this.drawBoard(game, shake);
-    this.drawEffects(game);
-    this.drawLauncher(game);
+    this.drawOwnBoard(game);
     ctx.restore();
 
     // Tablero del rival (derecha), solo visualización
@@ -231,20 +261,100 @@ export class Renderer {
   }
 
   drawVersusBanners(game) {
-    const v = game.versus;
     const ownCenter = FIELD_X + OWN_DX + FIELD_W / 2;
     if (game.state === 'countdown') {
-      const n = Math.ceil(game.countdownLeft);
-      this.boardBanner(ownCenter, n > 0 ? String(n) : 'GO!', 'VERSUS');
-      this.boardBanner(FIELD_X + RIVAL_DX + FIELD_W / 2, n > 0 ? String(n) : 'GO!', 'VERSUS');
+      this.boardBanner(ownCenter, countdownLabel(game), 'VERSUS');
+      this.boardBanner(FIELD_X + RIVAL_DX + FIELD_W / 2, countdownLabel(game), 'VERSUS');
     } else if (game.state === 'frozen') {
-      const left = v.frozen?.left;
-      const sub = v.frozen?.peer && left !== null ? `RIVAL DESCONECTADO ${Math.ceil(left)} S` : 'RECONECTANDO...';
-      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-      this.ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-      this.text('PAUSA DE RED', VIEW_W / 2, 100, '#f0d000', 8, 'center');
-      this.text(sub, VIEW_W / 2, 116, '#fff', 8, 'center');
+      this.drawFrozen(game.versus, VIEW_W, VIEW_H, 100);
     }
+  }
+
+  // Pantalla oscurecida de pausa de red. En móvil el texto largo se parte en dos líneas.
+  drawFrozen(v, width, height, y) {
+    const left = v.frozen?.left;
+    const lines = v.frozen?.peer && left !== null ? ['RIVAL DESCONECTADO', `${Math.ceil(left)} S`] : ['RECONECTANDO...'];
+    if (!this.mobile && lines.length > 1) lines.splice(0, 2, lines.join(' '));
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    this.ctx.fillRect(0, 0, width, height);
+    const size = this.mobile ? 6 : 8;
+    this.text('PAUSA DE RED', width / 2, y, '#f0d000', 8, 'center');
+    lines.forEach((line, i) => this.text(line, width / 2, y + 16 + i * 12, '#fff', size, 'center'));
+  }
+
+  // ---------- Móvil (SPEC 03): vista vertical 180×320 ----------
+
+  renderMobile(game) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(MOBILE_BOARD_DX, MOBILE_BOARD_DY);
+    if (game.state === 'menu') {
+      this.drawAttract(game);
+      ctx.restore();
+      return;
+    }
+    this.drawOwnBoard(game);
+    if (game.state === 'clear') this.drawBanner('ROUND CLEAR!', `BONUS ${game.lastBonus ?? ''}`);
+    if (game.mode === 'versus' && game.state === 'countdown') {
+      this.boardBanner(FIELD_X + FIELD_W / 2, countdownLabel(game), 'VERSUS');
+    }
+    ctx.restore();
+
+    if (game.mode === 'versus') {
+      this.drawMiniRival(game);
+      this.drawMobileVersusHud(game);
+      if (game.state === 'frozen') this.drawFrozen(game.versus, MOBILE_VIEW_W, MOBILE_VIEW_H, 150);
+    } else {
+      this.drawMobileHud(game);
+    }
+  }
+
+  // Franja superior en solitario: puntos y récord a la izquierda, modo y techo a la derecha
+  drawMobileHud(game) {
+    const lx = 6;
+    const rx = 100;
+    this.text('1UP', lx, 6, '#ff5050');
+    this.text(pad(game.score), lx, 18, '#fff');
+    this.text('HI', lx, 38, '#50b0ff');
+    this.text(pad(game.highScore), lx, 50, '#fff');
+
+    this.text(game.mode === 'arcade' ? 'ARCADE' : 'ENDLESS', rx, 6, '#f0d000');
+    const progress = game.mode === 'arcade' ? `ROUND ${game.levelIndex + 1}` : `ROWS ${game.rowsInserted}`;
+    this.text(progress, rx, 18, '#fff', 6);
+    this.text('DROP IN', rx, 38, '#50b0ff');
+    const warn = game.dropWarning && Math.floor(game.time * 6) % 2;
+    this.text(`${game.shotsUntilDrop} SHOTS`, rx, 50, warn ? '#ff4040' : '#fff', 6);
+    if (game.sound?.muted) this.text('MUTE', rx, 66, '#aaa', 6);
+  }
+
+  // Tablero del rival a escala 1/3 a la derecha de la franja, con su apodo encima
+  drawMiniRival(game) {
+    const ctx = this.ctx;
+    const v = game.versus;
+    this.text(v.nicks[1 - v.you] ?? '???', MINI_X + MINI_W / 2, 0, '#50b0ff', 6, 'center');
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(MINI_X, MINI_Y, MINI_W, MOBILE_HUD_H - MINI_Y);
+    ctx.clip();
+    ctx.translate(MINI_X, MINI_Y);
+    ctx.scale(MINI_RIVAL_SCALE, MINI_RIVAL_SCALE);
+    ctx.translate(-(FIELD_X - WALL), -MINI_TOP);
+    this.drawField(ctx, 0);
+    this.drawRivalBoard(v.rival, game.time);
+    ctx.restore();
+  }
+
+  // Izquierda de la franja en versus: apodo propio, basura pendiente y sonido
+  drawMobileVersusHud(game) {
+    const v = game.versus;
+    this.text('VERSUS', 6, 6, '#f0d000');
+    this.text(v.nicks[v.you] ?? '???', 6, 22, '#ff5050');
+    this.text('VS', 6, 36, '#fff', 6);
+    this.text(v.nicks[1 - v.you] ?? '???', 26, 36, '#50b0ff', 6);
+    if (v.pendingGarbage > 0 && Math.floor(game.time * 4) % 2 === 0) {
+      this.text(`+${v.pendingGarbage}`, 6, 52, '#f0d000');
+    }
+    if (game.sound?.muted) this.text('MUTE', 6, 68, '#aaa', 6);
   }
 
   // Cartel centrado sobre un tablero
@@ -286,3 +396,7 @@ export class Renderer {
 }
 
 const pad = (n) => String(n).padStart(8, '0');
+const countdownLabel = (game) => {
+  const n = Math.ceil(game.countdownLeft);
+  return n > 0 ? String(n) : 'GO!';
+};

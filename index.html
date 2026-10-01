@@ -2,7 +2,7 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>BobbleJS</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,6 +13,11 @@
     <main class="cabinet">
       <div class="screen">
         <canvas id="game" width="320" height="240" aria-label="Tablero de BobbleJS"></canvas>
+
+        <div id="touch-controls" hidden>
+          <button type="button" id="btn-pause" aria-label="Pausa">⏸</button>
+          <button type="button" id="btn-mute" aria-label="Sonido">🔊</button>
+        </div>
 
         <section id="menu" class="overlay">
           <h1 class="logo"><span>Bobble</span><span class="js">JS</span></h1>
@@ -52,7 +57,7 @@
           <p>Comparte este código</p>
           <p class="room-code"></p>
           <ul class="players"></ul>
-          <p class="hint">Esperando rival…</p>
+          <p class="hint waiting">Esperando rival…</p>
           <p class="net-msg" role="status"></p>
           <button type="button" class="lobby-exit">Salir</button>
         </section>

@@ -241,7 +241,10 @@ export class Game {
     if (acceptInput && this.input.isHeld('left')) direction -= 1;
     if (acceptInput && this.input.isHeld('right')) direction += 1;
     if (direction) this.shooter.aim(direction, dt);
-    this.aiming = direction !== 0;
+    // Táctil (SPEC 03): ángulo absoluto hacia el dedo; el Input de teclado no tiene aimAngle
+    const touchAngle = acceptInput ? (this.input.aimAngle ?? null) : null;
+    if (touchAngle !== null) this.shooter.angle = touchAngle;
+    this.aiming = direction !== 0 || touchAngle !== null;
     this.bubShootTimer = Math.max(0, this.bubShootTimer - dt);
 
     if (this.projectile) {
