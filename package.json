@@ -1,0 +1,17 @@
+{
+  "name": "bobblejs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Homenaje web a Puzzle Bobble con multijugador en red",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test \"server/test/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

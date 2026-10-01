@@ -20,6 +20,7 @@
           <div class="menu-options">
             <button type="button" data-mode="arcade">Arcade <small>Récord <span id="hi-arcade">0</span></small></button>
             <button type="button" data-mode="endless">Infinito <small>Récord <span id="hi-endless">0</span></small></button>
+            <button type="button" data-action="online">Versus online <small>2 jugadores</small></button>
           </div>
           <p class="hint">↑ ↓ elegir · Enter jugar</p>
           <ul class="rules">
@@ -28,6 +29,42 @@
             <li>Las burbujas sueltas caen y dan más puntos</li>
             <li>El techo baja cada pocos tiros: ¡no cruces la línea!</li>
           </ul>
+        </section>
+
+        <section id="online" class="overlay lobby" hidden>
+          <h2>Versus online</h2>
+          <label class="field">
+            Apodo
+            <input id="nick" type="text" maxlength="3" autocomplete="off" spellcheck="false" placeholder="AAA" />
+          </label>
+          <button type="button" id="create-room">Crear sala</button>
+          <div class="join-row">
+            <input id="join-code" type="text" maxlength="4" autocomplete="off" spellcheck="false" placeholder="CÓDIGO" aria-label="Código de sala" />
+            <button type="button" id="join-room">Unirse</button>
+          </div>
+          <p class="net-msg" role="status"></p>
+          <button type="button" class="lobby-exit">Volver</button>
+          <p class="hint">Esc para volver</p>
+        </section>
+
+        <section id="room" class="overlay lobby" hidden>
+          <h2>Sala</h2>
+          <p>Comparte este código</p>
+          <p class="room-code"></p>
+          <ul class="players"></ul>
+          <p class="hint">Esperando rival…</p>
+          <p class="net-msg" role="status"></p>
+          <button type="button" class="lobby-exit">Salir</button>
+        </section>
+
+        <section id="match-ready" class="overlay lobby" hidden>
+          <h2 class="won">¡Partida lista!</h2>
+          <p>Sala <strong class="room-code-inline"></strong></p>
+          <ul class="players"></ul>
+          <p>Semilla <strong class="seed"></strong></p>
+          <p>Ping <strong class="ping">–</strong></p>
+          <p class="net-msg" role="status"></p>
+          <button type="button" class="lobby-exit">Salir</button>
         </section>
 
         <section id="pause" class="overlay" hidden>

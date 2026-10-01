@@ -192,6 +192,83 @@ h2.won {
   text-align: center;
 }
 
+/* Lobby online */
+.lobby {
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.lobby input {
+  font: inherit;
+  width: 7ch;
+  padding: 8px 10px;
+  color: var(--accent);
+  background: #0c1848;
+  border: 3px solid #5070e0;
+  border-radius: 6px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.lobby input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.lobby input::placeholder {
+  color: #4a5a9a;
+}
+
+.join-row {
+  display: flex;
+  gap: 10px;
+}
+
+.join-row input {
+  width: 9ch;
+}
+
+.room-code {
+  font-size: 2.6em;
+  color: var(--accent);
+  letter-spacing: 6px;
+  text-shadow: 3px 3px 0 #806000;
+}
+
+.players {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  gap: 24px;
+}
+
+.players li.me {
+  color: var(--accent);
+}
+
+.players li.lost {
+  color: #ff5050;
+  animation: blink 0.6s steps(2) infinite;
+}
+
+.net-msg {
+  min-height: 1.6em;
+  color: var(--pink);
+  font-size: 0.8em;
+}
+
+.lobby button {
+  justify-content: center;
+}
+
 @keyframes blink {
   50% {
     opacity: 0.35;

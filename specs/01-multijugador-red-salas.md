@@ -1,6 +1,6 @@
 # SPEC 01 — Multijugador en red: servidor Node y salas por código
 
-> **Estado:** Aprobado
+> **Estado:** Implementado
 > **Depende de:** —
 > **Fecha:** 2026-09-30
 > **Objetivo:** Añadir un servidor Node + WebSocket que sirva el juego y empareje a dos jugadores por código de sala, funcionando igual en una WiFi local que detrás de un VPS.
@@ -146,6 +146,7 @@ const room = {
 - **Sí:** semilla generada por el servidor al llenarse la sala. Ambos clientes arrancarán igual en SPEC 02.
 - **Sí:** partida única con revancha en SPEC 02. **No:** mejor de 3.
 - **Sí:** gracia de 10 s con token de reconexión en `sessionStorage`. **No:** victoria inmediata (castiga microcortes de WiFi).
+- **Sí:** si los dos jugadores quedan desconectados a la vez, la sala se cierra al momento. La gracia de 10 s solo aplica mientras queda alguien conectado o el anfitrión espera solo.
 - **Sí:** sin pausa en online; P/Esc abrirá "Abandonar" en SPEC 02.
 - **Sí:** protocolo con campo `v`. Permite detectar clientes desactualizados tras un despliegue.
 - **Sí:** `rooms.js` puro con `now` inyectado, testeado con `node --test`. **No:** frameworks de test.

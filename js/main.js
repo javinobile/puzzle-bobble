@@ -2,6 +2,7 @@ import { loadSpriteSheet } from './assets.js';
 import { Sound } from './audio.js';
 import { Game } from './game.js';
 import { Input } from './input.js';
+import { Lobby } from './lobby.js';
 import { Renderer } from './renderer.js';
 import { Sprites } from './sprites.js';
 import { getHighScore } from './storage.js';
@@ -25,7 +26,7 @@ async function boot() {
   const sound = new Sound();
   const input = new Input(() => sound.unlock());
   const renderer = new Renderer($('#game'), new Sprites(sheet));
-  const menuButtons = [...document.querySelectorAll('#menu [data-mode]')];
+  const menuButtons = [...document.querySelectorAll('#menu .menu-options button')];
   let menuIndex = 0;
 
   const selectMenu = (i) => {
@@ -53,13 +54,24 @@ async function boot() {
     },
   });
 
+  const lobby = new Lobby({ menu: overlays.menu, sound, onExit: () => game.setState('menu') });
+
   const startMode = (mode) => {
     sound.unlock();
     sound.select();
     game.start(mode);
   };
+  const chooseMenu = (btn) => {
+    if (btn.dataset.action === 'online') {
+      sound.unlock();
+      sound.select();
+      lobby.open();
+    } else {
+      startMode(btn.dataset.mode);
+    }
+  };
   menuButtons.forEach((btn, i) => {
-    btn.addEventListener('click', () => startMode(btn.dataset.mode));
+    btn.addEventListener('click', () => chooseMenu(btn));
     btn.addEventListener('mouseenter', () => selectMenu(i));
   });
   document.querySelectorAll('[data-action="menu"]').forEach((btn) =>
@@ -69,6 +81,7 @@ async function boot() {
 
   // Navegación de menús con teclado (el juego solo procesa 'playing' y 'paused')
   const handleMenus = () => {
+    if (lobby.active) return; // el lobby gestiona su propio teclado
     if (game.state === 'menu') {
       if (input.consume('down') || input.consume('right')) {
         selectMenu(menuIndex + 1);
@@ -78,7 +91,7 @@ async function boot() {
         selectMenu(menuIndex - 1);
         sound.select();
       }
-      if (input.consume('confirm')) startMode(menuButtons[menuIndex].dataset.mode);
+      if (input.consume('confirm')) chooseMenu(menuButtons[menuIndex]);
     } else if (game.state === 'gameover' || game.state === 'victory') {
       if (input.consume('confirm')) game.setState('menu');
     }
