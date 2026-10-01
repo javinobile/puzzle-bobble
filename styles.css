@@ -269,6 +269,20 @@ h2.won {
   justify-content: center;
 }
 
+/* Versus (SPEC 02): el tablero se sigue viendo detrás */
+.overlay-light {
+  background: rgba(8, 16, 56, 0.7);
+}
+
+h2.draw {
+  color: var(--accent);
+}
+
+#rematch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 @keyframes blink {
   50% {
     opacity: 0.35;

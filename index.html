@@ -57,14 +57,22 @@
           <button type="button" class="lobby-exit">Salir</button>
         </section>
 
-        <section id="match-ready" class="overlay lobby" hidden>
-          <h2 class="won">¡Partida lista!</h2>
-          <p>Sala <strong class="room-code-inline"></strong></p>
+        <section id="versus-end" class="overlay lobby" hidden>
+          <h2 class="vs-title"></h2>
+          <p class="vs-reason"></p>
           <ul class="players"></ul>
-          <p>Semilla <strong class="seed"></strong></p>
-          <p>Ping <strong class="ping">–</strong></p>
+          <button type="button" id="rematch">Revancha</button>
           <p class="net-msg" role="status"></p>
           <button type="button" class="lobby-exit">Salir</button>
+          <p class="hint">Esc para salir</p>
+        </section>
+
+        <section id="quit-confirm" class="overlay overlay-light" hidden>
+          <h2>¿Abandonar?</h2>
+          <p>Perderás la partida</p>
+          <button type="button" id="quit-yes">Abandonar</button>
+          <button type="button" id="quit-no">Seguir jugando</button>
+          <p class="hint">Enter abandonar · P / Esc seguir</p>
         </section>
 
         <section id="pause" class="overlay" hidden>

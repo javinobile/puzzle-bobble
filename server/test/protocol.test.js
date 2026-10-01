@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PROTOCOL_VERSION, ROOM_CODE_ALPHABET, message, validateClientMessage } from '../../js/net/protocol.js';
+import { PROTOCOL_VERSION, ROOM_CODE_ALPHABET, message, validateClientMessage, validateRelay } from '../../js/net/protocol.js';
 
 const valid = (fields) => validateClientMessage(message(fields.t, fields));
 
@@ -22,6 +22,7 @@ test('acepta todos los mensajes válidos', () => {
   assert.ok(valid({ t: 'ping', ts: 123.4 }));
   assert.ok(valid({ t: 'relay', data: { anything: [1, 2, 3] } }));
   assert.ok(valid({ t: 'relay', data: null }));
+  assert.ok(valid({ t: 'rematch' }));
 });
 
 test('rechaza apodos inválidos', () => {
@@ -37,7 +38,8 @@ test('rechaza códigos de sala inválidos', () => {
 });
 
 test('rechaza versión, tipo o forma incorrectos', () => {
-  assert.equal(validateClientMessage({ v: 2, t: 'leave' }), false);
+  assert.equal(validateClientMessage({ v: 1, t: 'leave' }), false);
+  assert.equal(validateClientMessage({ v: 3, t: 'leave' }), false);
   assert.equal(validateClientMessage({ t: 'leave' }), false);
   assert.equal(validateClientMessage(message('welcome')), false);
   assert.equal(validateClientMessage(message('toString')), false);
@@ -49,4 +51,46 @@ test('rechaza versión, tipo o forma incorrectos', () => {
   assert.equal(valid({ t: 'ping', ts: Infinity }), false);
   assert.equal(valid({ t: 'resume', token: 'corto' }), false);
   assert.equal(valid({ t: 'relay' }), false);
+});
+
+test('la versión del protocolo es 2 (SPEC 02)', () => {
+  assert.equal(PROTOCOL_VERSION, 2);
+});
+
+test('validateRelay acepta los datos de relay válidos', () => {
+  assert.ok(validateRelay({ k: 'snap', rows: ['RRYY..BG', 'BBGGRRY', ''], shift: 1, drops: 2, current: 'R', next: 'B' }));
+  assert.ok(validateRelay({ k: 'snap', rows: [], shift: 0, drops: 0, current: null, next: null }));
+  assert.ok(validateRelay({ k: 'aim', a: -32.5 }));
+  assert.ok(validateRelay({ k: 'garbage', n: 3 }));
+  assert.ok(validateRelay({ k: 'lost' }));
+  assert.ok(validateRelay({ k: 'quit' }));
+});
+
+test('validateRelay rechaza datos malformados sin lanzar', () => {
+  const bad = [
+    null,
+    undefined,
+    42,
+    'snap',
+    [],
+    {},
+    { k: 'toString' },
+    { k: '__proto__' },
+    { k: 'snap' },
+    { k: 'snap', rows: 'RRYY', shift: 0, drops: 0, current: 'R', next: 'B' },
+    { k: 'snap', rows: ['RRYYBBGGX'], shift: 0, drops: 0, current: 'R', next: 'B' },
+    { k: 'snap', rows: ['rr'], shift: 0, drops: 0, current: 'R', next: 'B' },
+    { k: 'snap', rows: [1], shift: 0, drops: 0, current: 'R', next: 'B' },
+    { k: 'snap', rows: Array(21).fill(''), shift: 0, drops: 0, current: 'R', next: 'B' },
+    { k: 'snap', rows: [], shift: 2, drops: 0, current: 'R', next: 'B' },
+    { k: 'snap', rows: [], shift: 0, drops: -1, current: 'R', next: 'B' },
+    { k: 'snap', rows: [], shift: 0, drops: 0, current: 'red', next: 'B' },
+    { k: 'aim', a: 'izquierda' },
+    { k: 'aim', a: NaN },
+    { k: 'aim', a: 400 },
+    { k: 'garbage', n: 0 },
+    { k: 'garbage', n: 2.5 },
+    { k: 'garbage', n: 1000 },
+  ];
+  for (const data of bad) assert.equal(validateRelay(data), false, JSON.stringify(data));
 });

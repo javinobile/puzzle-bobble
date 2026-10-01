@@ -28,6 +28,8 @@ async function boot() {
   const renderer = new Renderer($('#game'), new Sprites(sheet));
   const menuButtons = [...document.querySelectorAll('#menu .menu-options button')];
   let menuIndex = 0;
+  let lobby = null;
+  const quitConfirm = $('#quit-confirm');
 
   const selectMenu = (i) => {
     menuIndex = (i + menuButtons.length) % menuButtons.length;
@@ -39,7 +41,14 @@ async function boot() {
     input,
     onStateChange(state, info) {
       if (state === 'mute') return;
+      // Versus: "¿Abandonar?" se abre sobre la partida sin cambiar de estado
+      if (state === 'quit-confirm') {
+        quitConfirm.hidden = !info.open;
+        return;
+      }
+      quitConfirm.hidden = true;
       for (const [name, el] of Object.entries(overlays)) el.hidden = name !== state;
+      lobby?.onGameState(state, info);
       if (state === 'menu') {
         $('#hi-arcade').textContent = getHighScore('arcade');
         $('#hi-endless').textContent = getHighScore('endless');
@@ -54,7 +63,7 @@ async function boot() {
     },
   });
 
-  const lobby = new Lobby({ menu: overlays.menu, sound, onExit: () => game.setState('menu') });
+  lobby = new Lobby({ menu: overlays.menu, sound, game, onExit: () => game.setState('menu') });
 
   const startMode = (mode) => {
     sound.unlock();
@@ -78,6 +87,8 @@ async function boot() {
     btn.addEventListener('click', () => game.setState('menu')),
   );
   $('#resume').addEventListener('click', () => game.setState('playing'));
+  $('#quit-yes').addEventListener('click', () => game.quitVersus());
+  $('#quit-no').addEventListener('click', () => game.setQuitConfirm(false));
 
   // Navegación de menús con teclado (el juego solo procesa 'playing' y 'paused')
   const handleMenus = () => {

@@ -31,7 +31,7 @@ python3 -m http.server # http://localhost:8000
 
 - **Arcade**: 10 rondas diseñadas a mano. Bonus por limpiar rápido.
 - **Infinito**: tablero aleatorio; cada pocos tiros entra una fila nueva y aparecen más colores con la puntuación.
-- **Versus online**: dos jugadores en red, emparejados con un código de sala de 4 letras.
+- **Versus online**: dos jugadores en red, emparejados con un código de sala de 4 letras. Tableros lado a lado y basura al rival.
 
 ## Multijugador
 
@@ -44,7 +44,18 @@ python3 -m http.server # http://localhost:8000
 
 Si el otro dispositivo no carga la página, permite Node en el cortafuegos (macOS: *Ajustes del Sistema → Red → Cortafuegos*; Windows lo pregunta la primera vez que arranca el servidor).
 
-Si un jugador pierde la conexión tiene 10 s para volver (recargar la pestaña lo devuelve a la sala). Si se desconectan los dos, la sala se cierra.
+Si un jugador pierde la conexión, los dos tableros se congelan y tiene 10 s para volver. Si no vuelve, gana el otro. Recargar la pestaña en plena partida cuenta como abandono. Si se desconectan los dos, la sala se cierra.
+
+### Reglas del versus
+
+- Los dos empiezan con el mismo tablero (semilla de la sala) tras una cuenta atrás 3-2-1. Tu tablero va a la izquierda y el del rival a la derecha.
+- Las filas que bajan con el techo también son las mismas para los dos.
+- **Basura:** si haces caer n burbujas sueltas con n > 2, el rival recibe n − 2 burbujas. Le entran al asentar su siguiente tiro, y mientras tanto su marcador muestra `+N`.
+- Limpiar el tablero no gana: entran 3 filas nuevas y se sigue.
+- Pierde quien cruce la línea primero. Si los dos la cruzan casi a la vez, es empate.
+- **P / Esc** pide confirmación para abandonar (abandonar es perder). No hay pausa en online.
+- Al terminar, **Revancha** empieza otra partida con un tablero nuevo cuando la pulsan los dos.
+- En versus no hay puntuación ni récords.
 
 ### Desplegar en un VPS
 
@@ -107,7 +118,7 @@ Las salas viven en memoria: reiniciar el proceso cierra las partidas en curso.
 ### Tests
 
 ```bash
-npm test   # lógica de salas y protocolo (node --test)
+npm test   # salas, protocolo, RNG con semilla y reglas del versus (node --test)
 ```
 
 ## Reglas
@@ -122,23 +133,24 @@ npm test   # lógica de salas y protocolo (node --test)
 ## Estructura
 
 ```
-index.html          Canvas y overlays (menú, lobby online, pausa, fin)
+index.html          Canvas y overlays (menú, lobby online, pausa, fin, resultado versus)
 styles.css          Estilos
 package.json        Dependencia ws y scripts start/test
 assets/sprites.png  Hoja de sprites original (fondo eliminado por chroma-key al cargar)
 server/
   index.js     Servidor HTTP estático + WebSocket en /ws
-  rooms.js     Salas en memoria (crear, unirse, gracia, caducidad)
+  rooms.js     Salas en memoria (crear, unirse, gracia, caducidad, revancha)
   test/        Tests con node --test
 specs/         Especificaciones del proyecto
 js/
   main.js      Arranque y bucle de juego
-  lobby.js     Pantallas del versus online
-  game.js      Estados, reglas y puntuación
+  lobby.js     Pantallas del versus online y flujo de partida/revancha
+  game.js      Estados, reglas, puntuación y modo versus
   grid.js      Rejilla hexagonal, grupos y burbujas flotantes
   shooter.js   Lanzador, proyectil y rebotes
   levels.js    Niveles Arcade y generador aleatorio
-  renderer.js  Dibujo del tablero y HUD
+  rng.js       Generador con semilla (mulberry32) para el versus
+  renderer.js  Dibujo del tablero y HUD (uno o dos tableros)
   sprites.js   Coordenadas de la hoja de sprites
   audio.js     Efectos sintetizados con Web Audio
   input.js     Teclado

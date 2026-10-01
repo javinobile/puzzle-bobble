@@ -54,9 +54,9 @@ export const LEVELS = [
   },
 ];
 
-// Modo Infinito: nuevas filas aleatorias
-export function randomRow(length, colors) {
-  return Array.from({ length }, () => colors[Math.floor(Math.random() * colors.length)]);
+// Modo Infinito y versus: nuevas filas aleatorias (versus pasa un rng con semilla)
+export function randomRow(length, colors, rng = Math.random) {
+  return Array.from({ length }, () => colors[Math.floor(rng() * colors.length)]);
 }
 
 export function endlessColors(score) {

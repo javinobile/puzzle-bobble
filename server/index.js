@@ -166,6 +166,12 @@ function handle(ws, msg) {
     }
     case 'ping':
       return send(ws, message('pong', { ts: msg.ts }));
+    case 'rematch': {
+      if (!ws.token) return;
+      const result = rooms.rematch(ws.token);
+      log(`[sala ${roomOf(ws.token)}] ${ws.id} rematch${result.out.length ? ' → nueva partida' : ''}`);
+      return dispatch(result);
+    }
     case 'relay': {
       if (!ws.token) return;
       const relay = message('relay', { data: msg.data });

@@ -7,6 +7,7 @@ import {
   LAUNCHER_Y,
   LIMIT_Y,
   MAX_ANGLE,
+  ROW_H,
   VIEW_H,
   VIEW_W,
 } from './config.js';
@@ -14,6 +15,10 @@ import {
 const FONT = '"Press Start 2P", monospace';
 const WALL = 8;
 const FIELD_RIGHT = FIELD_X + FIELD_W;
+// Versus (SPEC 02): el tablero lógico sigue centrado y se dibuja desplazado.
+// Propio en x = 16, rival en x = 176.
+const OWN_DX = 16 - FIELD_X;
+const RIVAL_DX = 176 - FIELD_X;
 
 export class Renderer {
   constructor(canvas, sprites) {
@@ -23,11 +28,12 @@ export class Renderer {
     canvas.width = VIEW_W;
     canvas.height = VIEW_H;
     this.ctx.imageSmoothingEnabled = false;
-    this.background = this.buildBackground();
+    this.background = this.buildBackground([0]);
+    this.versusBackground = this.buildBackground([OWN_DX, RIVAL_DX]);
   }
 
-  // Fondo estático pre-renderizado (patrón de rombos como el arcade)
-  buildBackground() {
+  // Fondo estático pre-renderizado (patrón de rombos como el arcade), con una zona de juego por desplazamiento
+  buildBackground(offsets) {
     const bg = document.createElement('canvas');
     bg.width = VIEW_W;
     bg.height = VIEW_H;
@@ -45,22 +51,24 @@ export class Renderer {
         ctx.fill();
       }
     }
-    // Zona de juego
-    const g = ctx.createLinearGradient(0, FIELD_TOP, 0, VIEW_H);
-    g.addColorStop(0, '#0c1848');
-    g.addColorStop(1, '#183078');
-    ctx.fillStyle = g;
-    ctx.fillRect(FIELD_X, 0, FIELD_W, VIEW_H);
-    // Paredes
-    for (const x of [FIELD_X - WALL, FIELD_RIGHT]) {
-      ctx.fillStyle = '#8890a8';
-      ctx.fillRect(x, FIELD_TOP - WALL, WALL, VIEW_H);
-      ctx.fillStyle = '#c8d0e8';
-      ctx.fillRect(x + 1, FIELD_TOP - WALL, 2, VIEW_H);
-      ctx.fillStyle = '#50586c';
-      ctx.fillRect(x + WALL - 2, FIELD_TOP - WALL, 2, VIEW_H);
-      ctx.fillStyle = '#e8b030';
-      for (let y = FIELD_TOP; y < VIEW_H; y += 24) ctx.fillRect(x + 2, y, 4, 4);
+    for (const dx of offsets) {
+      // Zona de juego
+      const g = ctx.createLinearGradient(0, FIELD_TOP, 0, VIEW_H);
+      g.addColorStop(0, '#0c1848');
+      g.addColorStop(1, '#183078');
+      ctx.fillStyle = g;
+      ctx.fillRect(FIELD_X + dx, 0, FIELD_W, VIEW_H);
+      // Paredes
+      for (const x of [FIELD_X - WALL + dx, FIELD_RIGHT + dx]) {
+        ctx.fillStyle = '#8890a8';
+        ctx.fillRect(x, FIELD_TOP - WALL, WALL, VIEW_H);
+        ctx.fillStyle = '#c8d0e8';
+        ctx.fillRect(x + 1, FIELD_TOP - WALL, 2, VIEW_H);
+        ctx.fillStyle = '#50586c';
+        ctx.fillRect(x + WALL - 2, FIELD_TOP - WALL, 2, VIEW_H);
+        ctx.fillStyle = '#e8b030';
+        for (let y = FIELD_TOP; y < VIEW_H; y += 24) ctx.fillRect(x + 2, y, 4, 4);
+      }
     }
     return bg;
   }
@@ -69,10 +77,11 @@ export class Renderer {
     const ctx = this.ctx;
     ctx.drawImage(this.background, 0, 0);
     if (game.state === 'menu') return this.drawAttract(game);
+    if (game.mode === 'versus') return this.renderVersus(game);
 
     const shake = game.dropWarning && !game.projectile ? Math.round(Math.sin(game.time * 60)) : 0;
-    this.drawCeiling(game, shake);
-    this.drawLimitLine(game);
+    this.drawCeiling(game.top, shake);
+    this.drawLimitLine(game.grid.lowestRow() + game.drops, game.time);
     this.drawBoard(game, shake);
     this.drawEffects(game);
     this.drawLauncher(game);
@@ -80,9 +89,8 @@ export class Renderer {
     if (game.state === 'clear') this.drawBanner('ROUND CLEAR!', `BONUS ${game.lastBonus ?? ''}`);
   }
 
-  drawCeiling(game, shake) {
+  drawCeiling(top, shake) {
     const ctx = this.ctx;
-    const top = game.top;
     ctx.fillStyle = '#687088';
     ctx.fillRect(FIELD_X - WALL, 0, FIELD_W + WALL * 2, FIELD_TOP - WALL);
     // Prensa que desciende
@@ -94,10 +102,11 @@ export class Renderer {
     ctx.fillRect(FIELD_X + shake, top - 2, FIELD_W, 2);
   }
 
-  drawLimitLine(game) {
+  // `depth`: fila más baja ocupada contando lo que bajó el techo
+  drawLimitLine(depth, time) {
     const ctx = this.ctx;
-    const danger = game.grid.lowestRow() + game.drops >= 10;
-    ctx.fillStyle = danger && Math.floor(game.time * 6) % 2 ? '#ff4040' : '#f0e0a0';
+    const danger = depth >= 10;
+    ctx.fillStyle = danger && Math.floor(time * 6) % 2 ? '#ff4040' : '#f0e0a0';
     for (let x = FIELD_X; x < FIELD_RIGHT; x += 8) ctx.fillRect(x, LIMIT_Y, 4, 1);
   }
 
@@ -159,6 +168,91 @@ export class Renderer {
 
     const help = ['←→ AIM', 'SPACE FIRE', 'P PAUSE', 'M SOUND'];
     help.forEach((line, i) => this.text(line, lx, 170 + i * 12, '#9fb4ff', 6));
+  }
+
+  // ---------- Versus (SPEC 02) ----------
+
+  renderVersus(game) {
+    const ctx = this.ctx;
+    const v = game.versus;
+    ctx.drawImage(this.versusBackground, 0, 0);
+
+    // Tablero propio (izquierda): el mismo dibujo que en solitario, desplazado
+    ctx.save();
+    ctx.translate(OWN_DX, 0);
+    const shake = game.dropWarning && !game.projectile ? Math.round(Math.sin(game.time * 60)) : 0;
+    this.drawCeiling(game.top, shake);
+    this.drawLimitLine(game.grid.lowestRow() + game.drops, game.time);
+    this.drawBoard(game, shake);
+    this.drawEffects(game);
+    this.drawLauncher(game);
+    ctx.restore();
+
+    // Tablero del rival (derecha), solo visualización
+    ctx.save();
+    ctx.translate(RIVAL_DX, 0);
+    this.drawRivalBoard(v.rival, game.time);
+    ctx.restore();
+
+    this.drawVersusHud(game);
+    this.drawVersusBanners(game);
+  }
+
+  drawRivalBoard(rival, time) {
+    const ctx = this.ctx;
+    const top = FIELD_TOP + rival.drops * ROW_H;
+    this.drawCeiling(top, 0);
+    const grid = rival.grid;
+    this.drawLimitLine(grid ? grid.lowestRow() + rival.drops : 0, time);
+    if (grid) {
+      for (const { r, c, color } of grid.cells()) {
+        const { x, y } = grid.center(r, c, top);
+        this.sprites.bubble(ctx, color, x, y);
+      }
+    }
+    const gearFrame = Math.floor(((rival.angle + MAX_ANGLE) / (MAX_ANGLE * 2)) * 11);
+    this.sprites.gear(ctx, gearFrame, LAUNCHER_X - 28, VIEW_H - 40);
+    this.sprites.arrow(ctx, rival.angle, LAUNCHER_X, LAUNCHER_Y);
+    if (rival.current) this.sprites.bubble(ctx, rival.current, LAUNCHER_X, LAUNCHER_Y);
+    if (rival.next) this.sprites.bubble(ctx, rival.next, LAUNCHER_X - 44, VIEW_H - 10);
+  }
+
+  drawVersusHud(game) {
+    const v = game.versus;
+    const own = FIELD_X + OWN_DX;
+    const rival = FIELD_X + RIVAL_DX;
+    const nick = (i) => v.nicks[i] ?? '???';
+    this.text(nick(v.you), own + 2, 4, '#ff5050');
+    this.text(nick(1 - v.you), rival + 2, 4, '#50b0ff');
+    if (v.pendingGarbage > 0 && Math.floor(game.time * 4) % 2 === 0) {
+      this.text(`+${v.pendingGarbage}`, own + FIELD_W - 2, 4, '#f0d000', 8, 'right');
+    }
+    if (game.sound?.muted) this.text('MUTE', VIEW_W / 2, VIEW_H - 10, '#aaa', 6, 'center');
+  }
+
+  drawVersusBanners(game) {
+    const v = game.versus;
+    const ownCenter = FIELD_X + OWN_DX + FIELD_W / 2;
+    if (game.state === 'countdown') {
+      const n = Math.ceil(game.countdownLeft);
+      this.boardBanner(ownCenter, n > 0 ? String(n) : 'GO!', 'VERSUS');
+      this.boardBanner(FIELD_X + RIVAL_DX + FIELD_W / 2, n > 0 ? String(n) : 'GO!', 'VERSUS');
+    } else if (game.state === 'frozen') {
+      const left = v.frozen?.left;
+      const sub = v.frozen?.peer && left !== null ? `RIVAL DESCONECTADO ${Math.ceil(left)} S` : 'RECONECTANDO...';
+      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      this.ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      this.text('PAUSA DE RED', VIEW_W / 2, 100, '#f0d000', 8, 'center');
+      this.text(sub, VIEW_W / 2, 116, '#fff', 8, 'center');
+    }
+  }
+
+  // Cartel centrado sobre un tablero
+  boardBanner(cx, title, subtitle) {
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    this.ctx.fillRect(cx - FIELD_W / 2, 90, FIELD_W, 44);
+    this.text(title, cx, 104, '#f0d000', 12, 'center');
+    this.text(subtitle, cx, 122, '#fff', 6, 'center');
   }
 
   drawBanner(title, subtitle) {
