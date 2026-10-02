@@ -69,6 +69,8 @@ Si un jugador pierde la conexión, los dos tableros se congelan y tiene 10 s par
 - **P / Esc** pide confirmación para abandonar (abandonar es perder). No hay pausa en online.
 - Al terminar, **Revancha** empieza otra partida con un tablero nuevo cuando la pulsan los dos.
 - En versus no hay puntuación ni récords.
+- El tablero del rival se anima: su flecha gira suave, se ve volar su burbuja y sus burbujas explotan y caen (sin sonido). El tablero de cada jugador lo sigue decidiendo su propio cliente.
+- El protocolo de red es la versión 3: un cliente con una versión anterior en caché ve "Recarga la página".
 
 ### Desplegar en un VPS
 
