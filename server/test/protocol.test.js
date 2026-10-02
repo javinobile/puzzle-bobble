@@ -39,7 +39,7 @@ test('rechaza códigos de sala inválidos', () => {
 
 test('rechaza versión, tipo o forma incorrectos', () => {
   assert.equal(validateClientMessage({ v: 1, t: 'leave' }), false);
-  assert.equal(validateClientMessage({ v: 3, t: 'leave' }), false);
+  assert.equal(validateClientMessage({ v: PROTOCOL_VERSION + 1, t: 'leave' }), false);
   assert.equal(validateClientMessage({ t: 'leave' }), false);
   assert.equal(validateClientMessage(message('welcome')), false);
   assert.equal(validateClientMessage(message('toString')), false);
@@ -53,8 +53,8 @@ test('rechaza versión, tipo o forma incorrectos', () => {
   assert.equal(valid({ t: 'relay' }), false);
 });
 
-test('la versión del protocolo es 2 (SPEC 02)', () => {
-  assert.equal(PROTOCOL_VERSION, 2);
+test('la versión del protocolo es 3 (SPEC 04)', () => {
+  assert.equal(PROTOCOL_VERSION, 3);
 });
 
 test('validateRelay acepta los datos de relay válidos', () => {
@@ -91,6 +91,45 @@ test('validateRelay rechaza datos malformados sin lanzar', () => {
     { k: 'garbage', n: 0 },
     { k: 'garbage', n: 2.5 },
     { k: 'garbage', n: 1000 },
+  ];
+  for (const data of bad) assert.equal(validateRelay(data), false, JSON.stringify(data));
+});
+
+test('validateClientMessage rechaza un cliente v2 (SPEC 04)', () => {
+  assert.equal(validateClientMessage({ v: 2, t: 'leave' }), false);
+});
+
+test('validateRelay acepta shot y snap con pop/fall (SPEC 04)', () => {
+  assert.ok(validateRelay({ k: 'shot', a: -32.5, c: 'R' }));
+  assert.ok(validateRelay({ k: 'shot', a: 90, c: 'B' }));
+  const snap = { k: 'snap', rows: ['RRYY..BG'], shift: 0, drops: 0, current: 'R', next: 'B' };
+  assert.ok(validateRelay(snap), 'snap sin pop/fall sigue siendo válido');
+  assert.ok(validateRelay({ ...snap, pop: [[3, 4], [3, 5], [4, 4]], fall: [[5, 2]] }));
+  assert.ok(validateRelay({ ...snap, pop: [], fall: [] }));
+  assert.ok(validateRelay({ ...snap, pop: Array(96).fill([0, 0]) }));
+});
+
+test('validateRelay rechaza shot y pop/fall malformados sin lanzar (SPEC 04)', () => {
+  const snap = { k: 'snap', rows: [], shift: 0, drops: 0, current: null, next: null };
+  const bad = [
+    { k: 'shot' },
+    { k: 'shot', a: 10 },
+    { k: 'shot', c: 'R' },
+    { k: 'shot', a: 91, c: 'R' },
+    { k: 'shot', a: NaN, c: 'R' },
+    { k: 'shot', a: 0, c: 'X' },
+    { k: 'shot', a: 0, c: 'red' },
+    { k: 'shot', a: 0, c: null },
+    { ...snap, pop: 'nada' },
+    { ...snap, pop: [[1]] },
+    { ...snap, pop: [[1, 2, 3]] },
+    { ...snap, pop: [[-1, 0]] },
+    { ...snap, pop: [[0, 8]] },
+    { ...snap, pop: [[20, 0]] },
+    { ...snap, pop: [[1.5, 0]] },
+    { ...snap, pop: [null] },
+    { ...snap, fall: [['1', '2']] },
+    { ...snap, pop: Array(97).fill([0, 0]) },
   ];
   for (const data of bad) assert.equal(validateRelay(data), false, JSON.stringify(data));
 });

@@ -18,7 +18,7 @@ import { Grid } from './grid.js';
 import { LEVELS, endlessColors, randomRow } from './levels.js';
 import { MAX_GARBAGE, validateRelay } from './net/protocol.js';
 import { createRng } from './rng.js';
-import { Shooter } from './shooter.js';
+import { Projectile, Shooter } from './shooter.js';
 import { POP_FRAME_COUNT } from './sprites.js';
 import { getHighScore, saveHighScore } from './storage.js';
 
@@ -31,6 +31,7 @@ const VERSUS_COLORS = ['blue', 'red', 'yellow', 'green'];
 const VERSUS_REFILL_ROWS = 3;
 
 const AIM_SEND_SECS = 0.1;
+const RIVAL_AIM_TAU = 0.05; // s: constante de tiempo del lerp del ángulo del rival (SPEC 04)
 const GARBAGE_FREE = 2; // las 2 primeras burbujas caídas no envían basura
 const COLOR_LETTERS = Object.fromEntries(Object.entries(COLOR_CODES).map(([letter, color]) => [color, letter]));
 
@@ -141,7 +142,18 @@ export class Game {
       boardRng: createRng(seed),
       shotRng: createRng((seed + you + 1) >>> 0),
       pendingGarbage: 0,
-      rival: { rows: [], shift: 0, drops: 0, current: null, next: null, angle: 0 },
+      rival: {
+        rows: [],
+        shift: 0,
+        drops: 0,
+        current: null,
+        next: null,
+        angle: 0, // ángulo dibujado (interpolado)
+        targetAngle: 0, // último ángulo recibido por 'aim' o 'shot'
+        ghost: null, // Projectile en vuelo o null
+        effects: [],
+        falling: [],
+      },
       lostSelf: false,
       result: null, // 'win' | 'lose' | 'draw'
       resultReason: null, // 'line' | 'quit' | 'timeout' | 'left'
@@ -188,6 +200,8 @@ export class Game {
   update(dt) {
     this.time += dt;
     if (this.input.consume('mute')) this.onStateChange?.('mute', { muted: this.sound.toggleMute(), game: this });
+    // El tablero del rival se anima aunque el propio esté en la animación de derrota; en frozen no
+    if (this.mode === 'versus' && ['countdown', 'playing', 'gameover-anim'].includes(this.state)) this.updateRival(dt);
 
     switch (this.state) {
       case 'countdown':
@@ -267,6 +281,9 @@ export class Game {
   }
 
   fire() {
+    if (this.mode === 'versus' && !this.versus.lostSelf) {
+      this.versus.send({ k: 'shot', a: Math.round(this.shooter.angle * 10) / 10, c: COLOR_LETTERS[this.current] });
+    }
     this.projectile = this.shooter.fire(this.current);
     this.current = this.next;
     this.next = this.randomColor();
@@ -278,13 +295,15 @@ export class Game {
 
   settle() {
     this.settleProjectile();
-    if (this.mode === 'versus' && !this.versus.lostSelf) this.sendSnapshot();
+    if (this.mode === 'versus' && !this.versus.lostSelf) this.sendSnapshot(this.shotCells);
   }
 
-  // La burbuja disparada se pega al tablero y se aplican las reglas
+  // La burbuja disparada se pega al tablero y se aplican las reglas.
+  // shotCells guarda las celdas que explotan y caen, antes de basura y techo (SPEC 04).
   settleProjectile() {
     const p = this.projectile;
     this.projectile = null;
+    this.shotCells = { pop: [], fall: [] };
     const cell = this.grid.nearestFreeCell(p.x, p.y, this.top);
     if (!cell) return this.gameOver();
     this.grid.set(cell.r, cell.c, p.color);
@@ -292,13 +311,14 @@ export class Game {
     const group = this.grid.floodFill(cell.r, cell.c);
     if (group.length >= 3) {
       for (const [r, c] of group) {
+        this.shotCells.pop.push([r, c]);
         const { x, y } = this.grid.center(r, c, this.top);
         this.effects.push({ x, y, color: this.grid.get(r, c), t: 0 });
         this.grid.remove(r, c);
       }
       this.addScore(group.length * POP_POINTS);
       this.sound.pop(group.length);
-      const dropped = this.dropFloating(true);
+      const dropped = this.dropFloating(true, this.shotCells.fall);
       if (this.mode === 'versus') this.sendGarbage(dropped);
     } else {
       this.sound.stick();
@@ -317,11 +337,12 @@ export class Game {
     this.refreshQueue();
   }
 
-  // Devuelve cuántas burbujas cayeron
-  dropFloating(scored) {
+  // Devuelve cuántas burbujas cayeron; si se pasa `cells`, añade ahí sus pares [r, c]
+  dropFloating(scored, cells = null) {
     const floating = this.grid.findFloating();
     if (!floating.length) return 0;
     for (const [r, c] of floating) {
+      cells?.push([r, c]);
       const { x, y } = this.grid.center(r, c, this.top);
       this.falling.push({ x, y, vx: (Math.random() - 0.5) * 60, vy: -60 - Math.random() * 80, color: this.grid.get(r, c) });
       this.grid.remove(r, c);
@@ -421,14 +442,8 @@ export class Game {
   }
 
   updateEffects(dt) {
-    for (const e of this.effects) e.t += dt;
-    this.effects = this.effects.filter((e) => e.t < POP_FRAME_COUNT * POP_FRAME_TIME);
-    for (const f of this.falling) {
-      f.vy += GRAVITY * dt;
-      f.x += f.vx * dt;
-      f.y += f.vy * dt;
-    }
-    this.falling = this.falling.filter((f) => f.y < VIEW_H + 16);
+    this.effects = advanceEffects(this.effects, dt);
+    this.falling = advanceFalling(this.falling, dt);
   }
 
   popFrame(effect) {
@@ -460,12 +475,24 @@ export class Game {
     v.send({ k: 'aim', a: angle });
   }
 
+  // Animación del tablero del rival (SPEC 04): lerp del ángulo, fantasma y efectos
+  updateRival(dt) {
+    const rival = this.versus.rival;
+    rival.angle += (rival.targetAngle - rival.angle) * (1 - Math.exp(-dt / RIVAL_AIM_TAU));
+    if (rival.ghost && rival.grid && rival.ghost.update(dt, rival.grid, rivalTop(rival)) === 'hit') rival.ghost = null;
+    rival.effects = advanceEffects(rival.effects, dt);
+    rival.falling = advanceFalling(rival.falling, dt);
+  }
+
   // Datos del rival recibidos por relay; lo malformado se descarta
   onRelay(data) {
     const v = this.versus;
     if (!v || !validateRelay(data)) return;
     switch (data.k) {
       case 'snap':
+        // Los efectos salen de la rejilla anterior, antes de sustituirla; el snap es la verdad
+        rivalShotEffects(v.rival, data.pop ?? [], data.fall ?? []);
+        v.rival.ghost = null;
         v.rival.grid = gridFromSnapshot(data.rows, data.shift);
         v.rival.rows = data.rows;
         v.rival.shift = data.shift;
@@ -474,7 +501,15 @@ export class Game {
         v.rival.next = COLOR_CODES[data.next] ?? null;
         break;
       case 'aim':
+        v.rival.targetAngle = data.a;
+        break;
+      case 'shot':
+        if (v.result) return;
+        v.rival.targetAngle = data.a;
         v.rival.angle = data.a;
+        v.rival.ghost = new Projectile(COLOR_CODES[data.c], data.a);
+        v.rival.current = v.rival.next;
+        v.rival.next = null;
         break;
       case 'garbage':
         if (!v.result) v.pendingGarbage = Math.min(MAX_GARBAGE, v.pendingGarbage + data.n);
@@ -540,6 +575,7 @@ export class Game {
     v.frozen = null;
     v.confirmingQuit = false;
     this.projectile = null;
+    clearRivalAnimation(v.rival);
     if (v.result === 'win') this.sound.levelClear();
     this.setState('versus-end', { result: v.result, reason: v.resultReason });
   }
@@ -569,7 +605,8 @@ export class Game {
     if (this.state === 'frozen') this.setState(prev);
   }
 
-  sendSnapshot() {
+  // `cells` ({ pop, fall }) solo en los snaps que vienen de un tiro
+  sendSnapshot(cells = null) {
     const v = this.versus;
     v.send({
       k: 'snap',
@@ -578,6 +615,7 @@ export class Game {
       drops: this.drops,
       current: COLOR_LETTERS[this.current] ?? null,
       next: COLOR_LETTERS[this.next] ?? null,
+      ...(cells && { pop: cells.pop, fall: cells.fall }),
     });
   }
 
@@ -631,4 +669,48 @@ function gridFromSnapshot(rows, shift) {
     }
   });
   return grid;
+}
+
+function advanceEffects(effects, dt) {
+  for (const e of effects) e.t += dt;
+  return effects.filter((e) => e.t < POP_FRAME_COUNT * POP_FRAME_TIME);
+}
+
+function advanceFalling(falling, dt) {
+  for (const f of falling) {
+    f.vy += GRAVITY * dt;
+    f.x += f.vx * dt;
+    f.y += f.vy * dt;
+  }
+  return falling.filter((f) => f.y < VIEW_H + 16);
+}
+
+function rivalTop(rival) {
+  return FIELD_TOP + rival.drops * ROW_H;
+}
+
+// Pop y caída en el tablero del rival a partir de los pares del snap (SPEC 04).
+// Los pares sobre celdas vacías de la rejilla anterior se ignoran. Sin sonido.
+function rivalShotEffects(rival, pop, fall) {
+  const grid = rival.grid;
+  if (!grid) return;
+  const top = rivalTop(rival);
+  for (const [r, c] of pop) {
+    const color = grid.get(r, c);
+    if (!color) continue;
+    const { x, y } = grid.center(r, c, top);
+    rival.effects.push({ x, y, color, t: 0 });
+  }
+  for (const [r, c] of fall) {
+    const color = grid.get(r, c);
+    if (!color) continue;
+    const { x, y } = grid.center(r, c, top);
+    rival.falling.push({ x, y, vx: (Math.random() - 0.5) * 60, vy: -60 - Math.random() * 80, color });
+  }
+}
+
+function clearRivalAnimation(rival) {
+  rival.ghost = null;
+  rival.effects = [];
+  rival.falling = [];
 }

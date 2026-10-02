@@ -1,7 +1,7 @@
-// Protocolo de red compartido por el navegador y el servidor (SPEC 01, v2 en SPEC 02).
+// Protocolo de red compartido por el navegador y el servidor (SPEC 01, v2 en SPEC 02, v3 en SPEC 04).
 // Todos los mensajes son JSON { v, t, ...campos }.
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const MAX_MESSAGE_BYTES = 4096;
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // sin I ni O
 export const ROOM_CODE_LENGTH = 4;
@@ -48,8 +48,10 @@ export function validateClientMessage(msg) {
 
 // ---------- Contenido de relay (SPEC 02) ----------
 // El servidor reenvía `data` sin mirarlo; lo valida el cliente que lo recibe.
-//   { k: 'snap', rows: ['RRYY..BG', …], shift, drops, current, next }  tras asentar cada tiro
+//   { k: 'snap', rows: ['RRYY..BG', …], shift, drops, current, next, pop?, fall? }  tras asentar cada tiro
+//                          pop/fall (SPEC 04): pares [r, c] en la rejilla anterior al tiro
 //   { k: 'aim', a }        ángulo del lanzador en grados
+//   { k: 'shot', a, c }    disparo (SPEC 04): ángulo y letra del color
 //   { k: 'garbage', n }    burbujas de basura enviadas al rival
 //   { k: 'lost' }          mi burbuja cruzó la línea
 //   { k: 'quit' }          abandono
@@ -58,6 +60,26 @@ export const MAX_GARBAGE = 20;
 const SNAP_ROW_RE = /^[BRPKYGOW.]{0,8}$/;
 const COLOR_LETTER_RE = /^[BRPKYGOW]$/;
 const MAX_SNAP_ROWS = 20;
+const SNAP_COLS = 8;
+const MAX_CELL_PAIRS = 96; // 12 filas × 8
+
+const isAngle = (value) => Number.isFinite(value) && Math.abs(value) <= 90;
+// Opcional: ausente equivale a []
+const isCellList = (value) =>
+  value === undefined ||
+  (Array.isArray(value) &&
+    value.length <= MAX_CELL_PAIRS &&
+    value.every(
+      (pair) =>
+        Array.isArray(pair) &&
+        pair.length === 2 &&
+        Number.isInteger(pair[0]) &&
+        pair[0] >= 0 &&
+        pair[0] < MAX_SNAP_ROWS &&
+        Number.isInteger(pair[1]) &&
+        pair[1] >= 0 &&
+        pair[1] < SNAP_COLS,
+    ));
 
 const isColorLetter = (value) => value === null || (typeof value === 'string' && COLOR_LETTER_RE.test(value));
 const isSmallInt = (value, max) => Number.isInteger(value) && value >= 0 && value <= max;
@@ -70,8 +92,11 @@ const RELAY_SCHEMA = {
     (d.shift === 0 || d.shift === 1) &&
     isSmallInt(d.drops, MAX_SNAP_ROWS) &&
     isColorLetter(d.current) &&
-    isColorLetter(d.next),
-  aim: (d) => Number.isFinite(d.a) && Math.abs(d.a) <= 90,
+    isColorLetter(d.next) &&
+    isCellList(d.pop) &&
+    isCellList(d.fall),
+  aim: (d) => isAngle(d.a),
+  shot: (d) => isAngle(d.a) && typeof d.c === 'string' && COLOR_LETTER_RE.test(d.c),
   garbage: (d) => Number.isInteger(d.n) && d.n >= 1 && d.n <= MAX_GARBAGE,
   lost: () => true,
   quit: () => true,

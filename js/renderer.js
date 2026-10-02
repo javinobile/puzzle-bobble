@@ -221,15 +221,17 @@ export class Renderer {
     // Tablero del rival (derecha), solo visualización
     ctx.save();
     ctx.translate(RIVAL_DX, 0);
-    this.drawRivalBoard(v.rival, game.time);
+    this.drawRivalBoard(game);
     ctx.restore();
 
     this.drawVersusHud(game);
     this.drawVersusBanners(game);
   }
 
-  drawRivalBoard(rival, time) {
+  drawRivalBoard(game) {
     const ctx = this.ctx;
+    const rival = game.versus.rival;
+    const time = game.time;
     const top = FIELD_TOP + rival.drops * ROW_H;
     this.drawCeiling(top, 0);
     const grid = rival.grid;
@@ -240,6 +242,10 @@ export class Renderer {
         this.sprites.bubble(ctx, color, x, y);
       }
     }
+    // SPEC 04: burbuja fantasma en vuelo y efectos de pop y caída del rival
+    if (rival.ghost) this.sprites.bubble(ctx, rival.ghost.color, rival.ghost.x, rival.ghost.y);
+    for (const e of rival.effects) this.sprites.pop(ctx, e.color, game.popFrame(e), e.x, e.y);
+    for (const f of rival.falling) this.sprites.bubble(ctx, f.color, f.x, f.y);
     const gearFrame = Math.floor(((rival.angle + MAX_ANGLE) / (MAX_ANGLE * 2)) * 11);
     this.sprites.gear(ctx, gearFrame, LAUNCHER_X - 28, VIEW_H - 40);
     this.sprites.arrow(ctx, rival.angle, LAUNCHER_X, LAUNCHER_Y);
@@ -340,7 +346,7 @@ export class Renderer {
     ctx.scale(MINI_RIVAL_SCALE, MINI_RIVAL_SCALE);
     ctx.translate(-(FIELD_X - WALL), -MINI_TOP);
     this.drawField(ctx, 0);
-    this.drawRivalBoard(v.rival, game.time);
+    this.drawRivalBoard(game);
     ctx.restore();
   }
 
